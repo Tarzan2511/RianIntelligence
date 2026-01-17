@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rian Intelligence</title>
+<style>
+body {
+    font-family: 'Segoe UI', Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: linear-gradient(135deg, #ff6ec7, #ffac42, #007bff);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+}
+.container {
+    width: 100%;
+    max-width: 900px;
+    height: 85vh;
+    background-color: #ffffff;
+    border-radius: 15px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+.chat-container {
+    flex: 1;
+    padding: 10px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.message {
+    display: flex;
+    margin: 5px 0;
+}
+.user-message {
+    justify-content: flex-end;
+}
+.bot-message {
+    justify-content: flex-start;
+}
+.bubble {
+    max-width: 70%;
+    padding: 10px 15px;
+    border-radius: 20px;
+    font-size: 1em;
+    font-weight: bold;
+    word-wrap: break-word;
+}
+.user-message .bubble {
+    background: linear-gradient(135deg, #00bfa5, #1de9b6);
+    color: white;
+}
+.bot-message .bubble {
+    background: linear-gradient(135deg, #ff6ec7, #ffac42);
+    color: white;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+}
+.rainbow-text {
+    background: linear-gradient(45deg, #ff6ec7, #ffac42, #007bff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: bold;
+    font-size: 1.5em;
+}
+.input-container {
+    display: flex;
+    padding: 10px;
+    background: linear-gradient(135deg, #007bff, #ffac42);
+    border-top: 1px solid #ccc;
+}
+.input-container input {
+    flex: 1;
+    padding: 10px;
+    font-size: 1em;
+    border-radius: 20px;
+    border: 1px solid #ccc;
+    outline: none;
+    margin-right: 10px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+}
+.input-container button {
+    padding: 10px 15px;
+    font-size: 1em;
+    background-color: #ff6ec7;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+.input-container button:hover {
+    background-color: #ffac42;
+}
+.container.pulsing {
+    animation: pulse 1.2s infinite ease-in-out;
+}
+@keyframes pulse {
+    0% { box-shadow: 0 0 10px rgba(0,123,255,0.4); }
+    50% { box-shadow: 0 0 30px rgba(0,123,255,0.7); }
+    100% { box-shadow: 0 0 10px rgba(0,123,255,0.4); }
+}
+.voice-button {
+    background-color: #00bfa5;
+    color: white;
+    padding: 10px;
+    border: none;
+    cursor: pointer;
+    border-radius: 20px;
+    margin-left: 10px;
+    font-size: 1em;
+    transition: background 0.3s ease;
+}
+.voice-button:hover {
+    background-color: #1de9b6;
+}
+.fallback-button {
+    margin-top: 5px;
+    padding: 5px 10px;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+}
+.fallback-button:hover {
+    background: #0056b3;
+}
+</style>
+</head>
+<body>
+<div class="container" id="chatApp">
+    <div class="chat-container" id="chatContainer">
+        <div class="bot-message">
+            <div class="bubble">Hello, how can I assist you?</div>
+        </div>
+    </div>
+    <div class="input-container">
+        <input type="text" id="userInput" placeholder="Type your command here..." autocomplete="off"/>
+        <button id="sendBtn">Send</button>
+    </div>
+</div>
+
+<script>
+const TOMTOM_API_KEY = 'a5ils2mzadqrSjOSZi5CCmmysBoYJO5V'; // optional if you use location
+const WORKER_URL = 'rianintelligence.rianknight-tarzan.workers.dev'; // replace with your Cloudflare Worker URL
+
+const chatContainer = document.getElementById('chatContainer');
+const userInput = document.getElementById('userInput');
+const sendBtn = document.getElementById('sendBtn');
+
+function addMessage(content, type='bot', callback=null) {
+    const msgDiv = document.createElement('div');
+    msgDiv.classList.add('message', type === 'bot' ? 'bot-message' : 'user-message');
+    const bubble = document.createElement('div');
+    bubble.classList.add('bubble');
+    msgDiv.appendChild(bubble);
+    chatContainer.appendChild(msgDiv);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+
+    if(type==='bot') typeMessage(bubble, content, callback);
+    else bubble.textContent = content;
+}
+
+function typeMessage(element, message, callback=null) {
+    element.textContent = '';
+    let i = 0;
+    const interval = setInterval(() => {
+        element.textContent += message.charAt(i);
+        i++;
+        if(i >= message.length) {
+            clearInterval(interval);
+            if(callback) callback();
+        }
+    }, 20);
+}
+
+async function sendToAI(prompt, showUser=true) {
+    if(showUser) addMessage(prompt, 'user');
+    addMessage("Loading...", 'bot');
+
+    try {
+        const res = await fetch(WORKER_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt })
+        });
+
+        const data = await res.json();
+        const message = data?.choices?.[0]?.message?.content || "No response from AI.";
+        chatContainer.lastChild.querySelector('.bubble').textContent = message;
+        return message;
+    } catch(e) {
+        chatContainer.lastChild.querySelector('.bubble').textContent = "Error connecting to AI.";
+        console.error(e);
+    }
+}
+
+// ---------------- TomTom Location ----------------
+function getLocation() {
+    if(navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            fetch(`https://api.tomtom.com/search/2/reverseGeocode/${lat},${lon}.json?key=${TOMTOM_API_KEY}`)
+            .then(res => res.json())
+            .then(data => {
+                if(data && data.addresses && data.addresses.length>0){
+                    const address = data.addresses[0].address.freeformAddress;
+                    addMessage(`You are at: ${address}`, 'bot');
+                } else {
+                    addMessage("Unable to retrieve address.", 'bot');
+                }
+            }).catch(()=>addMessage("Error retrieving address from TomTom.", 'bot'));
+        }, ()=>addMessage("Unable to retrieve location.", 'bot'));
+    } else addMessage("Geolocation not supported by browser.", 'bot');
+}
+
+function getTime() {
+    const currentTime = new Date().toLocaleTimeString();
+    addMessage(`The current time is ${currentTime}.`, 'bot');
+}
+
+function getDirections(destination) {
+    if(navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            addMessage(`Sure, opening directions to ${destination}...`, 'bot', ()=> {
+                setTimeout(()=> {
+                    const mapsUrl = `https://maps.apple.com/?saddr=${lat},${lon}&daddr=${encodeURIComponent(destination)}`;
+                    window.location.href = mapsUrl;
+                }, 2000);
+            });
+        }, ()=>addMessage("Unable to retrieve location for directions.", 'bot'));
+    } else addMessage("Geolocation is not supported by this browser.", 'bot');
+}
+
+function evaluateMath(expression) {
+    try {
+        const result = eval(expression);
+        addMessage(`The answer is ${result}.`, 'bot');
+    } catch {
+        addMessage("Invalid math expression.", 'bot');
+    }
+}
+
+function findNearest(query) {
+    if(navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            addMessage(`Searching the web: ${query}...`, 'bot', ()=> {
+                setTimeout(()=> {
+                    const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}/@${lat},${lon},15z/`;
+                    window.open(mapsUrl,'_blank');
+                    addMessage(`Searched the web: ${query}`, 'bot', ()=> {
+                        addFallbackButton(query,'ai');
+                    });
+                }, 2000);
+            });
+        }, ()=>addMessage("Unable to retrieve location.", 'bot'));
+    } else addMessage("Geolocation not supported by browser.", 'bot');
+}
+
+function searchWeb(question) {
+    addMessage(`Searching the web: ${question}...`, 'bot', ()=> {
+        setTimeout(()=> {
+            const url = `https://www.google.com/search?q=${encodeURIComponent(question)}`;
+            window.open(url,'_blank');
+            addMessage(`Searched the web: ${question}`, 'bot', ()=> {
+                addFallbackButton(question,'ai');
+            });
+        },2000);
+    });
+}
+
+function addFallbackButton(question, forceMode) {
+    const lastMsg = chatContainer.lastChild;
+    const bubble = lastMsg.querySelector('.bubble');
+    const btn = document.createElement('button');
+    btn.classList.add('fallback-button');
+    btn.textContent = forceMode==='ai' ? 'Use AI instead' : 'Search the web instead';
+    btn.onclick = ()=> fallbackAIOrWeb(question, forceMode);
+    bubble.appendChild(document.createElement('br'));
+    bubble.appendChild(btn);
+}
+
+async function fallbackAIOrWeb(question, forceMode=null){
+    if(forceMode==='ai'){
+        await sendToAI(question,false);
+        addMessage("Used AI", 'bot', ()=> addFallbackButton(question,'web'));
+        return;
+    } else if(forceMode==='web'){
+        searchWeb(question);
+        return;
+    }
+
+    // Ask AI if unsure
+    const prompt = `should i ask ai or search the web. answer only with "ai" for ai or "web" for web, here is the question: ${question}`;
+    try {
+        const res = await fetch(WORKER_URL,{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({prompt})
+        });
+        const data = await res.json();
+        let decision = 'web';
+        try { decision = data.choices[0].message.content.trim().toLowerCase(); } catch {}
+        if(decision==='ai'){
+            await sendToAI(question,false);
+            addMessage("Used AI", 'bot', ()=> addFallbackButton(question,'web'));
+        } else {
+            searchWeb(question);
+        }
+    } catch(e){
+        searchWeb(question);
+    }
+}
+
+function processCommand(command){
+    command = command.trim().toLowerCase();
+    if(command.includes("where am i") || command.includes("location")) getLocation();
+    else if(command.includes("what's the time") || command.includes("what is the time")) getTime();
+    else if(command.startsWith("directions to")) getDirections(command.replace("directions to","").trim());
+    else if(command.startsWith("where is the nearest")) findNearest(command.replace("where is the nearest","").trim());
+    else if(command.match(/(\d+(\s*[-+*/]\s*\d+)+)/)) evaluateMath(command);
+    else fallbackAIOrWeb(command);
+}
+
+sendBtn.addEventListener('click', ()=> {
+    if(userInput.value.trim()!==''){
+        processCommand(userInput.value);
+        userInput.value='';
+    }
+});
+userInput.addEventListener('keypress',(e)=>{
+    if(e.key==='Enter' && userInput.value.trim()!==''){
+        processCommand(userInput.value);
+        userInput.value='';
+    }
+});
+</script>
+</body>
+</html>
