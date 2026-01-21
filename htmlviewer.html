@@ -150,8 +150,7 @@ body {
 </div>
 
 <script>
-const TOMTOM_API_KEY = 'a5ils2mzadqrSjOSZi5CCmmysBoYJO5V'; // optional if you use location
-const WORKER_URL = 'rianintelligence.rianknight-tarzan.workers.dev'; // replace with your Cloudflare Worker URL
+const WORKER_URL = 'rianintelligence.rianknight-tarzan.workers.dev'; // your Cloudflare Worker
 
 const chatContainer = document.getElementById('chatContainer');
 const userInput = document.getElementById('userInput');
@@ -204,22 +203,13 @@ async function sendToAI(prompt, showUser=true) {
     }
 }
 
-// ---------------- TomTom Location ----------------
+// ---------------- Location & Commands ----------------
 function getLocation() {
     if(navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(pos => {
             const lat = pos.coords.latitude;
             const lon = pos.coords.longitude;
-            fetch(`https://api.tomtom.com/search/2/reverseGeocode/${lat},${lon}.json?key=${TOMTOM_API_KEY}`)
-            .then(res => res.json())
-            .then(data => {
-                if(data && data.addresses && data.addresses.length>0){
-                    const address = data.addresses[0].address.freeformAddress;
-                    addMessage(`You are at: ${address}`, 'bot');
-                } else {
-                    addMessage("Unable to retrieve address.", 'bot');
-                }
-            }).catch(()=>addMessage("Error retrieving address from TomTom.", 'bot'));
+            addMessage(`Your coordinates are: ${lat.toFixed(5)}, ${lon.toFixed(5)}`, 'bot');
         }, ()=>addMessage("Unable to retrieve location.", 'bot'));
     } else addMessage("Geolocation not supported by browser.", 'bot');
 }
@@ -234,14 +224,14 @@ function getDirections(destination) {
         navigator.geolocation.getCurrentPosition(pos => {
             const lat = pos.coords.latitude;
             const lon = pos.coords.longitude;
-            addMessage(`Sure, opening directions to ${destination}...`, 'bot', ()=> {
+            addMessage(`Opening directions to ${destination}...`, 'bot', ()=> {
                 setTimeout(()=> {
                     const mapsUrl = `https://maps.apple.com/?saddr=${lat},${lon}&daddr=${encodeURIComponent(destination)}`;
                     window.location.href = mapsUrl;
-                }, 2000);
+                }, 1000);
             });
         }, ()=>addMessage("Unable to retrieve location for directions.", 'bot'));
-    } else addMessage("Geolocation is not supported by this browser.", 'bot');
+    } else addMessage("Geolocation not supported.", 'bot');
 }
 
 function evaluateMath(expression) {
@@ -253,87 +243,31 @@ function evaluateMath(expression) {
     }
 }
 
-function findNearest(query) {
-    if(navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(pos => {
-            const lat = pos.coords.latitude;
-            const lon = pos.coords.longitude;
-            addMessage(`Searching the web: ${query}...`, 'bot', ()=> {
-                setTimeout(()=> {
-                    const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}/@${lat},${lon},15z/`;
-                    window.open(mapsUrl,'_blank');
-                    addMessage(`Searched the web: ${query}`, 'bot', ()=> {
-                        addFallbackButton(query,'ai');
-                    });
-                }, 2000);
-            });
-        }, ()=>addMessage("Unable to retrieve location.", 'bot'));
-    } else addMessage("Geolocation not supported by browser.", 'bot');
-}
-
-function searchWeb(question) {
-    addMessage(`Searching the web: ${question}...`, 'bot', ()=> {
-        setTimeout(()=> {
-            const url = `https://www.google.com/search?q=${encodeURIComponent(question)}`;
-            window.open(url,'_blank');
-            addMessage(`Searched the web: ${question}`, 'bot', ()=> {
-                addFallbackButton(question,'ai');
-            });
-        },2000);
-    });
-}
-
-function addFallbackButton(question, forceMode) {
+// ---------------- Force AI Fallback ----------------
+function addFallbackButton(question) {
     const lastMsg = chatContainer.lastChild;
     const bubble = lastMsg.querySelector('.bubble');
     const btn = document.createElement('button');
     btn.classList.add('fallback-button');
-    btn.textContent = forceMode==='ai' ? 'Use AI instead' : 'Search the web instead';
-    btn.onclick = ()=> fallbackAIOrWeb(question, forceMode);
+    btn.textContent = 'Use AI';
+    btn.onclick = () => fallbackAI(question);
     bubble.appendChild(document.createElement('br'));
     bubble.appendChild(btn);
 }
 
-async function fallbackAIOrWeb(question, forceMode=null){
-    if(forceMode==='ai'){
-        await sendToAI(question,false);
-        addMessage("Used AI", 'bot', ()=> addFallbackButton(question,'web'));
-        return;
-    } else if(forceMode==='web'){
-        searchWeb(question);
-        return;
-    }
-
-    // Ask AI if unsure
-    const prompt = `should i ask ai or search the web. answer only with "ai" for ai or "web" for web, here is the question: ${question}`;
-    try {
-        const res = await fetch(WORKER_URL,{
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({prompt})
-        });
-        const data = await res.json();
-        let decision = 'web';
-        try { decision = data.choices[0].message.content.trim().toLowerCase(); } catch {}
-        if(decision==='ai'){
-            await sendToAI(question,false);
-            addMessage("Used AI", 'bot', ()=> addFallbackButton(question,'web'));
-        } else {
-            searchWeb(question);
-        }
-    } catch(e){
-        searchWeb(question);
-    }
+async function fallbackAI(question) {
+    await sendToAI(question, false);
+    addMessage("Used AI", 'bot', () => addFallbackButton(question));
 }
 
+// ---------------- Command Processing ----------------
 function processCommand(command){
     command = command.trim().toLowerCase();
     if(command.includes("where am i") || command.includes("location")) getLocation();
     else if(command.includes("what's the time") || command.includes("what is the time")) getTime();
     else if(command.startsWith("directions to")) getDirections(command.replace("directions to","").trim());
-    else if(command.startsWith("where is the nearest")) findNearest(command.replace("where is the nearest","").trim());
     else if(command.match(/(\d+(\s*[-+*/]\s*\d+)+)/)) evaluateMath(command);
-    else fallbackAIOrWeb(command);
+    else fallbackAI(command);
 }
 
 sendBtn.addEventListener('click', ()=> {
